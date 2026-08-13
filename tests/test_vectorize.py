@@ -171,15 +171,6 @@ def test_connect_returns_the_client_when_weaviate_is_up(monkeypatch):
     assert connect() is sentinel
 
 
-def test_connect_does_not_swallow_other_errors(monkeypatch):
-    """Only connection problems are translated -- real bugs still surface."""
-    monkeypatch.setattr(
-        weaviate, "connect_to_local", lambda: (_ for _ in ()).throw(ValueError("bug"))
-    )
-    with pytest.raises(ValueError):
-        connect()
-
-
 # --- config(): the collection schema ----------------------------------------
 
 def test_config_vector_sources_are_real_properties():

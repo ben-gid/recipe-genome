@@ -5,12 +5,10 @@ from typing import Any
 import weaviate
 from weaviate.util import generate_uuid5
 from weaviate.classes.config import Configure, Property, DataType
-from weaviate.collections.classes.config_vectors import _VectorConfigCreate
 from tqdm import tqdm
 from datasets import load_from_disk
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-DS_PATH = DATA_DIR/ "parsed-recipes"
+DS_PATH = Path(__file__).resolve().parent.parent / "data" / "parsed-recipes"
 
 def main():
     """Load parsed recipes, build a fresh 'Recipes' collection in Weaviate, and load it with vectorized recipe objects."""
@@ -50,11 +48,7 @@ def main():
 
 
 def connect() -> weaviate.WeaviateClient:
-    """Connect to the local Weaviate, or exit with a hint if it isn't up yet.
-
-    Covers all three "not usable" cases: nothing listening, server still
-    booting, and HTTP up while gRPC isn't (compose mid-start).
-    """
+    """Connect to the local Weaviate, or exit with a hint if it isn't up yet."""
     try:
         return weaviate.connect_to_local()
     except weaviate.exceptions.WeaviateBaseError as e:
@@ -64,10 +58,7 @@ def connect() -> weaviate.WeaviateClient:
 
 def verify_delete(name: str = "Recipes") -> bool:
     """Ask the user to confirm deleting an existing collection before it's replaced."""
-    response = input(f"{name} collection already exists. Replace it? (y/n)")
-    if response.lower() in ["y", "yes"]:
-        return True
-    return False
+    return input(f"{name} collection already exists. Replace it? (y/n)").lower() in ("y", "yes")
 
 def to_props(recipe: dict[str, Any]) -> dict[str, Any]:
     """Map a raw dataset recipe row to the Weaviate object properties (must match `config()`'s schema)."""
@@ -89,15 +80,9 @@ def to_props(recipe: dict[str, Any]) -> dict[str, Any]:
         "servings": recipe["RecipeServings"],
     }
     
-def config() -> tuple[_VectorConfigCreate, list]:
+def config() -> tuple[Any, list]:
     """Build the Recipes collection's vector config and property schema."""
-    vec_fields = [
-        "name",
-        "category",
-        "keywords",
-        "ingredients",
-        "description"
-    ]
+    vec_fields = ["name", "category", "keywords", "ingredients", "description"]
 
     vector_config = Configure.Vectors.text2vec_transformers(
         name="vector",

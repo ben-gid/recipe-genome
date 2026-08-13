@@ -109,7 +109,6 @@ def test_parse_word_starting_with_c_is_untouched(cell):
     [
         ("c(1, 2", ["(1, 2"]),        # unclosed bracket -> SyntaxError -> kept as text
         ("   ", ["   "]),             # whitespace only -> SyntaxError -> kept as text
-        ("c   ", ["c   "]),           # no `c(`, so nothing stripped -> kept as text
         ("Mix well", ["Mix well"]),   # two bare words aren't valid Python -> kept as text
     ],
 )

@@ -7,8 +7,7 @@ import os
 
 from datasets import load_dataset
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-DS_PATH = DATA_DIR/ "parsed-recipes"
+DS_PATH = Path(__file__).resolve().parent.parent / "data" / "parsed-recipes"
 
 def parse(cell: Any) -> list[Any]:
     """parses ds cells (R code) into python list. 
@@ -34,16 +33,8 @@ def parse(cell: Any) -> list[Any]:
         pass
     return list(cell) if isinstance(cell, tuple) else [cell]
 
-def format_batch(batch: dict[str, list[Any]], columns: list[str]):
-    """Runs parse() over every cell in the given columns of one batch of rows.
-
-    Args:
-        batch (dict[str, list[Any]]): column name -> list of that column's cells
-        columns (list[str]): which columns to parse
-
-    Returns:
-        dict[str, list[list[Any]]]: same columns, cells now lists
-    """
+def format_batch(batch: dict[str, list[Any]], columns: list[str]) -> dict[str, list[list[Any]]]:
+    """Runs parse() over every cell in the named columns of one batch of rows."""
     return {col: [parse(v) for v in batch[col]] for col in columns}
 
 
