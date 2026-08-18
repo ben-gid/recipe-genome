@@ -7,6 +7,7 @@ to integration testing.
 """
 
 import builtins
+from datetime import timedelta
 
 import httpx
 import pytest
@@ -18,6 +19,7 @@ from weaviate.exceptions import (
     WeaviateStartUpError,
 )
 
+import vectorize
 from vectorize import config, connect, to_props, verify_delete
 
 
@@ -37,6 +39,9 @@ def make_recipe(**overrides):
         "FatContent": 2.5,
         "CarbohydrateContent": 37.1,
         "RecipeServings": 4.0,
+        "CookTime": timedelta(minutes=30),
+        "PrepTime": timedelta(minutes=15),
+        "TotalTime": timedelta(minutes=45),
     }
     return recipe | overrides
 
@@ -120,6 +125,16 @@ def test_to_props_drops_descriptions_mentioning_food_com(desc):
 def test_to_props_keeps_real_descriptions(desc):
     """Only the literal "food.com" is filtered; normal text survives intact."""
     assert to_props(make_recipe(Description=desc))["description"] == desc
+
+
+# --- main(): the "dataset must be preprocessed first" guard -----------------
+
+def test_main_exits_when_ds_path_missing(monkeypatch, tmp_path):
+    """main() exits with a hint instead of crashing in load_from_disk."""
+    monkeypatch.setattr(vectorize, "DS_PATH", tmp_path / "does-not-exist")
+    with pytest.raises(SystemExit) as exit_info:
+        vectorize.main()
+    assert "src/preprocess.py" in str(exit_info.value)
 
 
 # --- verify_delete(): the "are you sure?" prompt ----------------------------
@@ -216,4 +231,7 @@ def test_config_property_types():
         "fat": DataType.NUMBER,
         "carbs": DataType.NUMBER,
         "servings": DataType.NUMBER,
+        "cook_time": DataType.NUMBER,
+        "prep_time": DataType.NUMBER,
+        "total_time": DataType.NUMBER,
     }

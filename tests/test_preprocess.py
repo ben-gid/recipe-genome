@@ -5,9 +5,11 @@ The dataset stores lists the way R prints them: `c("flour", "sugar")`.
 what it does with the normal case and with every weird cell we can think of.
 """
 
+from datetime import timedelta
+
 import pytest
 
-from preprocess import format_batch, parse
+from preprocess import format_batch, parse, parse_duration
 
 
 @pytest.mark.parametrize("cell", [None, 123, 4.5, [], {}, True, b"c(1)"])
@@ -132,13 +134,13 @@ def test_parse_bare_single_word_is_kept_as_is(cell):
 def test_format_batch_parses_only_the_named_columns():
     """Returns just the requested columns; Dataset.map merges the rest back in."""
     batch = {"Keywords": ['c("a", "b")', "NA"], "Name": ["Soup", "Stew"]}
-    assert format_batch(batch, ["Keywords"]) == {"Keywords": [["a", "b"], [None]]}
+    assert format_batch(batch, ["Keywords"], []) == {"Keywords": [["a", "b"], [None]]}
 
 
 def test_format_batch_handles_several_columns():
     """Every named column is parsed independently, row by row."""
     batch = {"Keywords": ['c("a")'], "Images": ["character(0)"]}
-    assert format_batch(batch, ["Keywords", "Images"]) == {
+    assert format_batch(batch, ["Keywords", "Images"], []) == {
         "Keywords": [["a"]],
         "Images": [[]],
     }
@@ -146,22 +148,61 @@ def test_format_batch_handles_several_columns():
 
 def test_format_batch_empty_batch():
     """A column present but with zero rows stays an empty list, not an error."""
-    assert format_batch({"Keywords": []}, ["Keywords"]) == {"Keywords": []}
+    assert format_batch({"Keywords": []}, ["Keywords"], []) == {"Keywords": []}
 
 
 def test_format_batch_no_columns_requested():
     """Asking for no columns changes nothing."""
-    assert format_batch({"Keywords": ['c("a")']}, []) == {}
+    assert format_batch({"Keywords": ['c("a")']}, [], []) == {}
 
 
 def test_format_batch_missing_column_raises():
     """A typo'd column name should fail loudly, not silently skip data."""
     with pytest.raises(KeyError):
-        format_batch({"Keywords": ['c("a")']}, ["Nope"])
+        format_batch({"Keywords": ['c("a")']}, ["Nope"], [])
 
 
 def test_format_batch_does_not_mutate_input():
     """The original batch dict is left untouched (map gets a fresh dict back)."""
     batch = {"Keywords": ['c("a")']}
-    format_batch(batch, ["Keywords"])
+    format_batch(batch, ["Keywords"], [])
     assert batch == {"Keywords": ['c("a")']}
+
+
+def test_format_batch_parses_duration_columns():
+    """Duration columns run through parse_duration, not parse."""
+    batch = {"CookTime": ["PT1H", "PT30M"]}
+    assert format_batch(batch, [], ["CookTime"]) == {
+        "CookTime": [timedelta(hours=1), timedelta(minutes=30)]
+    }
+
+
+# --- parse_duration(): ISO 8601 durations -------------------------------------
+
+@pytest.mark.parametrize("s", [None, ""])
+def test_parse_duration_empty_returns_empty_timedelta(s):
+    """No duration recorded -> None, not an error."""
+    assert parse_duration(s) == timedelta(seconds=0)
+
+
+@pytest.mark.parametrize(
+    ("s", "expected"),
+    [
+        ("PT24H45M", timedelta(hours=24, minutes=45)),  # the docstring's own example
+        ("PT30M", timedelta(minutes=30)),
+        ("P1D", timedelta(days=1)),
+        ("P1DT2H3M4S", timedelta(days=1, hours=2, minutes=3, seconds=4)),
+        ("PT-30M", timedelta(minutes=30)),  # negative components become positive
+        ("P0D", timedelta()),
+    ],
+)
+def test_parse_duration_parses_iso_8601(s, expected):
+    """Each duration component maps onto the matching timedelta kwarg."""
+    assert parse_duration(s) == expected
+
+
+@pytest.mark.parametrize("s", ["not a duration", "PT1X", "1H", "PTXH"])
+def test_parse_duration_invalid_raises(s):
+    """Text that isn't a valid ISO 8601 duration fails loudly, not silently."""
+    with pytest.raises(ValueError):
+        parse_duration(s)

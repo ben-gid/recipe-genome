@@ -12,6 +12,9 @@ DS_PATH = Path(__file__).resolve().parent.parent / "data" / "parsed-recipes"
 
 def main():
     """Load parsed recipes, build a fresh 'Recipes' collection in Weaviate, and load it with vectorized recipe objects."""
+    if not DS_PATH.exists():
+        sys.exit(f"parsed recipes at: '{DS_PATH}' doesn't exist. "
+                 "Run 'src/preprocess.py' to create it.")
     ds = load_from_disk(DS_PATH)
     vector_config, properties = config()
 
@@ -78,6 +81,9 @@ def to_props(recipe: dict[str, Any]) -> dict[str, Any]:
         "fat": recipe["FatContent"],
         "carbs": recipe["CarbohydrateContent"],
         "servings": recipe["RecipeServings"],
+        "cook_time": recipe["CookTime"].total_seconds() / 60,
+        "prep_time": recipe["PrepTime"].total_seconds() / 60,
+        "total_time": recipe["TotalTime"].total_seconds() / 60,
     }
     
 def config() -> tuple[Any, list]:
@@ -105,6 +111,9 @@ def config() -> tuple[Any, list]:
         Property(name="fat",            data_type=DataType.NUMBER),
         Property(name="carbs",          data_type=DataType.NUMBER),
         Property(name="servings",       data_type=DataType.NUMBER),
+        Property(name="cook_time",      data_type=DataType.NUMBER),
+        Property(name="prep_time",      data_type=DataType.NUMBER),
+        Property(name="total_time",     data_type=DataType.NUMBER),
     ]
 
     # prevent vector from building if a vec_field isn't in the collection properties
