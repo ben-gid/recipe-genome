@@ -71,6 +71,9 @@ def test_to_props_passes_values_through_unchanged():
     assert props["fat"] == 2.5
     assert props["carbs"] == 37.1
     assert props["servings"] == 4.0
+    assert props["cook_time"] == 30.0
+    assert props["prep_time"] == 15.0
+    assert props["total_time"] == 45.0
 
 
 # --- to_props(): missing values ---------------------------------------------
@@ -88,6 +91,14 @@ def test_to_props_leaves_missing_numbers_as_none():
     props = to_props(make_recipe(AggregatedRating=None, RecipeServings=None))
     assert props["rating"] is None
     assert props["servings"] is None
+
+
+def test_to_props_leaves_missing_durations_as_none():
+    """A missing duration stays None, not 0 -- 0 would mean "instant" to a filter."""
+    props = to_props(make_recipe(CookTime=None, PrepTime=None, TotalTime=None))
+    assert props["cook_time"] is None
+    assert props["prep_time"] is None
+    assert props["total_time"] is None
 
 
 def test_to_props_missing_column_raises():

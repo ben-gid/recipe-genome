@@ -41,20 +41,20 @@ def parse(cell: Any) -> list[Any]:
         pass
     return list(cell) if isinstance(cell, tuple) else [cell]
 
-def parse_duration(s: str) -> timedelta:
+def parse_duration(s: str) -> timedelta | None:
     """converts ISO 8601 durations - not datetimes- into datetime.timedelta
 
     Args:
-        s (str): ISO 8601 durations 
+        s (str): ISO 8601 durations
 
     Raises:
         ValueError: if s doesn't match ISO_DURATION_RE
 
     Returns:
-        timedelta: parsed duration as timedelta
+        timedelta | None: parsed duration as timedelta, or None if no duration was recorded
     """
     if not s:
-        return timedelta(seconds=0)
+        return None
     m = ISO_DURATION_RE.match(s)
     if not m:
         raise ValueError(f"Invalid ISO 8601 duration: {s!r}")
@@ -65,7 +65,7 @@ def format_batch(
     batch: dict[str, list[Any]], 
     reg_columns: list[str], 
     dur_columns: list[str]
-) -> dict[str, list[list[Any]] | list[timedelta]]:
+) -> dict[str, list[list[Any]] | list[timedelta | None]]:
     """Runs parse() over every cell in the named columns of one batch of rows."""
     reg = {col: [parse(v) for v in batch[col]] for col in reg_columns}
     dur = {col: [parse_duration(v) for v in batch[col]] for col in dur_columns}

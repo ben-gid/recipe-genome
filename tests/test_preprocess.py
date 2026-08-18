@@ -180,9 +180,9 @@ def test_format_batch_parses_duration_columns():
 # --- parse_duration(): ISO 8601 durations -------------------------------------
 
 @pytest.mark.parametrize("s", [None, ""])
-def test_parse_duration_empty_returns_empty_timedelta(s):
-    """No duration recorded -> None, not an error."""
-    assert parse_duration(s) == timedelta(seconds=0)
+def test_parse_duration_empty_returns_none(s):
+    """No duration recorded -> None, not an error and not 0 (0 would mean "instant")."""
+    assert parse_duration(s) is None
 
 
 @pytest.mark.parametrize(

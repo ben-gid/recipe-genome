@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 import sys
 from typing import Any
@@ -63,6 +64,10 @@ def verify_delete(name: str = "Recipes") -> bool:
     """Ask the user to confirm deleting an existing collection before it's replaced."""
     return input(f"{name} collection already exists. Replace it? (y/n)").lower() in ("y", "yes")
 
+def _minutes(td: timedelta | None) -> float | None:
+    """Convert a duration to minutes, keeping None as "no data" instead of 0."""
+    return td.total_seconds() / 60 if td else None
+
 def to_props(recipe: dict[str, Any]) -> dict[str, Any]:
     """Map a raw dataset recipe row to the Weaviate object properties (must match `config()`'s schema)."""
     desc = recipe["Description"] or ""
@@ -81,9 +86,9 @@ def to_props(recipe: dict[str, Any]) -> dict[str, Any]:
         "fat": recipe["FatContent"],
         "carbs": recipe["CarbohydrateContent"],
         "servings": recipe["RecipeServings"],
-        "cook_time": recipe["CookTime"].total_seconds() / 60,
-        "prep_time": recipe["PrepTime"].total_seconds() / 60,
-        "total_time": recipe["TotalTime"].total_seconds() / 60,
+        "cook_time": _minutes(recipe["CookTime"]),
+        "prep_time": _minutes(recipe["PrepTime"]),
+        "total_time": _minutes(recipe["TotalTime"]),
     }
     
 def config() -> tuple[Any, list]:
