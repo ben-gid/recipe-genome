@@ -13,3 +13,11 @@ dependencies = [
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+
+# ty's project root is whatever folder VSCode is opened to, so a bare-folder open
+# type-checks backend/ against the root .venv and can't find fastapi. Bolting the
+# backend venv on as an extra search path is enough for the editor; open
+# recipe-genome.code-workspace instead if you want them properly separated.
+# Bump the version here if backend's .venv moves off 3.14.
+[tool.ty.environment]
+extra-paths = ["backend/.venv/lib/python3.14/site-packages"]

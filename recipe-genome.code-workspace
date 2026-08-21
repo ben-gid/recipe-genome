@@ -1,0 +1,7 @@
+{
+	"folders": [
+		{ "name": "recipe-genome", "path": "." },
+		{ "name": "backend", "path": "backend" }
+	],
+	"settings": {}
+}

@@ -40,8 +40,8 @@ def main():
         with recipes.batch.dynamic() as batch:
             for recipe in tqdm(ds, total=len(ds)):
                 batch.add_object(
-                    properties=to_props(recipe), # type: ignore
-                    uuid=generate_uuid5(recipe["RecipeId"]) # type: ignore
+                    properties=to_props(recipe), 
+                    uuid=generate_uuid5(recipe["RecipeId"])
                 )
 
         # catch failed

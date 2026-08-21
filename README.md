@@ -1,8 +1,47 @@
 # recipe-genome
 
-RAG over a recipe dataset with hybrid search: semantic + structured filters (dietary restrictions, cook time, ingredients-on-hand). React frontend with faceted search UI.
+RAG over 522,517 recipes with hybrid search: semantic similarity plus structured filters (dietary keywords, cook time, calories, ingredients on hand). A React faceted-search UI on top, and an agent that plans a week of meals against constraints it can actually verify.
 
-**Stack:** Weaviate · FastAPI · React + Vite · Claude
+**Stack:** Weaviate · FastAPI · React + Vite · Claude · AWS (deploy target)
+
+## Status
+
+**Built** — the offline pipeline. 522k recipes parsed, cleaned, embedded, and queryable in Weaviate, with 94 tests over the parsing rules.
+
+**In progress** — the search API. FastAPI app, hybrid query, and range filters exist; the eval harness that decides how retrieval gets tuned does not.
+
+**Not started** — the React UI, the agent loop, the deploy.
+
+[ROADMAP.md](ROADMAP.md) has the phase-by-phase detail and the acceptance criteria for each.
+
+## Design philosophy
+
+Three ideas drive most of the decisions in this repo.
+
+**Embedding-time correctness is worth more than query-time cleverness.** A bad vector cannot be rescued by a better search. Most of the effort so far has gone into what goes *into* the index — auditing the text, blanking the noise, asserting the schema agrees with the mapping — rather than into tuning what comes out.
+
+**Measure before adding a component.** A reranker, a bigger embedding model, a query rewriter: each is a plausible improvement and none of them ship before an eval harness says the current setup falls short. The alternative is a pipeline of parts nobody can justify removing.
+
+**An agent's output is only as trustworthy as its verifier.** The meal planner in Phase 4 is not the hard part — a model will happily produce seven days of dinners. The hard part is `check_plan`, the typed checker that decides whether those dinners actually fit under the calorie ceiling and avoid the allergens. The plan is a suggestion; the checker is the product.
+
+## How it fits together
+
+Two independent projects and a database, with no shared code between them.
+
+```
+src/          Offline pipeline — runs on demand, never at request time
+  preprocess.py   HF dataset -> parsed columns -> data/parsed-recipes
+  vectorize.py    parsed recipes -> the Recipes collection in Weaviate
+backend/      Search API — its own pyproject.toml, its own venv
+  app/api/        FastAPI app, routes, and the Weaviate query layer
+  app/models.py   request/response schemas
+tests/        Pipeline tests (the backend has its own tests/)
+docker-compose.yaml   Weaviate + the GPU embedding sidecar
+```
+
+`src/` and `backend/` never import each other. The pipeline's job ends when the data is in Weaviate; the API's job starts there, and it reaches the database over the network like any other client. That boundary is what lets a 522k-row reload happen without touching the API, and the API deploy happen without carrying `datasets` and its dependency tree into the image.
+
+The one thing that crosses the boundary is the schema, and it crosses implicitly — the property names `vectorize.py` writes are the names `backend/` reads. Nothing enforces that agreement, which is exactly why it's written down in [CLAUDE.md](CLAUDE.md#the-schemamapping-invariant).
 
 ## Design notes
 
@@ -12,55 +51,27 @@ RAG over a recipe dataset with hybrid search: semantic + structured filters (die
 
 I found this out the hard way. An early load run inserted every object and reported zero failures, and then every single search came back empty. The cause was a capitalization mismatch between `source_properties` and the schema I'd declared — Weaviate's auto-schema swallowed it silently and stored the records with no vectors at all. There's now a startup assertion that checks the vectorized fields, the schema, and the row mapping all agree before a load is allowed to start.
 
-For search itself, I'm starting with Weaviate's built-in hybrid (BM25 + vector) instead of adding a reranker. Keyword matching genuinely matters here — ingredient names are exactly the kind of thing embeddings can blur together — and hybrid costs nothing extra to run. A reranker goes in later if the eval numbers say I need one, not before.
+**Starting with hybrid, not a reranker.** For search itself, I'm starting with Weaviate's built-in hybrid (BM25 + vector) instead of adding a reranker. Keyword matching genuinely matters here — ingredient names are exactly the kind of thing embeddings blur together — and hybrid costs nothing extra to run. A reranker goes in later if the eval numbers say I need one, not before.
 
-## Roadmap
+**Failing loud where a wrong answer is worse than no answer.** The two parsers in `preprocess.py` handle bad input differently on purpose. `parse()` returns unparseable text as-is: a weird ingredient string is still worth indexing. `parse_duration()` raises: a cook time that parses to the wrong number would silently corrupt every time-based filter downstream, and a crash during preprocessing is far cheaper than that. The same instinct shows up in how `None` is treated — an unrated recipe stays unrated, and a missing cook time is never quietly rounded to "instant."
 
-The dataset is picked, cleaned, and searchable — Phase 1 is done. Everything after that is what's left, roughly in the order I plan to build it.
+## Quick start
 
-### Phase 1 — Pick and vectorize a dataset ✅
+Needs [uv](https://docs.astral.sh/uv/), Docker, and an NVIDIA GPU for the embedding sidecar.
 
-- [x] Pick a dataset — went with `untitledwebsite123/food-recipes` on Hugging Face, 522,517 recipes.
-- [x] Understand it — audited the `Description` field and found over a third was boilerplate (see Design notes above).
-- [x] Preprocess — parse the R-style list columns (ingredients, keywords, instructions) into real Python lists, parse ISO-8601 durations (cook/prep/total time) into `timedelta`s, blank the boilerplate descriptions.
-- [x] Vectorize — build the Weaviate schema, load all 522k recipes through the `text2vec-transformers` service, and confirm hybrid queries return real hits against it, with tests covering the schema and load.
+```bash
+uv sync                  # pipeline deps
+docker compose up -d     # Weaviate + the GPU transformers sidecar
+uv run src/preprocess.py # download and parse the dataset (~10 min)
+uv run src/vectorize.py  # build the schema and load 522k objects (slow — GPU-bound)
+uv run pytest            # pipeline tests
 
-### Phase 2 — Search API and retrieval evaluation
+uv sync --project backend                                  # API deps, separate venv
+uv run --project backend uvicorn app.api.main:app --reload # the search API
+```
 
-- [ ] Build a `/search` endpoint in FastAPI — free-text query plus filters for calories, protein, rating floor, and ingredients on hand.
-- [ ] Add a cook-time filter — `preprocess.py` already parses the ISO-8601 durations (`PT45M`, `PT24H45M`) into `timedelta`s; expose `total_time` as a filter on the `/search` endpoint.
-- [ ] Build a retrieval eval harness — hold out a sample of recipes, query with each one's own description, and check whether it comes back. Report recall@10 and MRR.
-- [ ] Compare BM25-only, vector-only, hybrid at a few alpha values, and hybrid plus a reranker — publish the numbers here and decide on the reranker from evidence, not guesswork.
+## Where things are written down
 
-### Phase 3 — React UI
-
-- [ ] Set up React + TypeScript on Vite.
-- [ ] Build the faceted search UI — dietary keywords, calorie/protein ranges, rating floor, cook time, and ingredients-on-hand as removable chips.
-- [ ] Sync filter state to the URL so a search is shareable and back/forward actually works.
-- [ ] Add a recipe detail view — ingredients, instructions, nutrition.
-
-### Phase 4 — Agent loop with typed verification
-
-- [ ] Write a hand-rolled tool loop against the Anthropic SDK — no orchestration framework, just call the model, check `stop_reason`, run whatever tools it asked for, feed the results back, repeat.
-- [ ] Give it two tools: `search_recipes` (wraps Phase 2's search) and `check_plan` (checks a candidate week against calorie targets, pantry coverage, and allergens).
-- [ ] Use Pydantic models to validate tool inputs and outputs, so a malformed call fails fast instead of quietly confusing the model.
-- [ ] Bound the loop — a hard iteration cap, a tool-call budget, and failures returned as recoverable tool errors instead of crashes.
-- [ ] Write scenario tests that assert a returned plan actually satisfies its constraints — under the calorie ceiling, no allergen violations, pantry coverage above some threshold.
-
-### Phase 5 — Live agent trace
-
-- [ ] Stream the planning endpoint as Server-Sent Events.
-- [ ] Consume the stream in the browser with `EventSource` — no extra library needed.
-- [ ] Render each search, each check, and each backtrack as it happens, ending on the finished week.
-
-### Phase 6 — Deploy
-
-- [ ] Get `docker compose up` to bring up Weaviate, the embedding sidecar, the API, and the UI in one shot.
-- [ ] Add per-IP rate limiting and a hard spend cap before this goes anywhere public.
-- [ ] Share a typed API contract with the frontend, generated from OpenAPI.
-- [ ] Make indexing resumable, so a 522k-row load can survive getting interrupted partway through.
-- [ ] Set up CI — tests and lint on every push.
-
-### Later
-
-Accounts and saved meal plans — a nice next step once the planner's worth coming back to, but not something I'm building yet.
+- **[ROADMAP.md](ROADMAP.md)** — what's next, in build order, with acceptance criteria per phase.
+- **[CLAUDE.md](CLAUDE.md)** — the working notes: invariants, gotchas, and the conventions that carry meaning. Written for Claude Code, useful to anyone editing the code.
+- **[structure.md](structure.md)** — the generic FastAPI + React layout this project follows, distilled from the official full-stack template.
